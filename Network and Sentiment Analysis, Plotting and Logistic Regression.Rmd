@@ -1,0 +1,1442 @@
+---
+title: "Social Project"
+output: html_document
+date: "2025-01-10"
+---
+
+```{r, warning=FALSE}
+library(igraph)
+library(tidyverse)
+library(ggplot2)
+theme_set(theme_minimal())
+```
+# Data
+
+Reading music data
+```{r}
+ms_data = read.csv("final_cleaned_lyrics_dataset.csv")
+
+adj_mat = read.csv("final_adjacency matrix.csv", row.names = 1)
+adj_mat = as.matrix(t(adj_mat))
+```
+
+Taking a look of the structure 
+```{r}
+str(ms_data)
+```
+
+```{r}
+str(adj_mat)
+```
+
+## Distribution of people
+Visualizing the distribution of people
+```{r}
+distr = ms_data %>% 
+  select(user_id, disorder)%>%
+  distinct()%>%
+  count(disorder)%>%
+  arrange(desc(n))
+distr
+```
+
+```{r}
+disorder_colors = c(
+  "anxiety" = rgb(1, 0, 0),       # Red 
+  "depression" = rgb(0, 0, 1),    # Blue
+  "ptsd" = rgb(0, 1, 0),          # Green
+  "borderline" = rgb(1, 0.5, 0),  # Orange
+  "panic" = rgb(0.5, 0, 0.5),     # Purple
+  "bipolar" = rgb(1, 0.75, 0.8)   # Pink
+)
+```
+
+
+```{r}
+plt = distr %>% ggplot(aes(x = fct_reorder(disorder, n, .desc = TRUE), y = n, fill = disorder))+
+  geom_bar(stat = "identity")+
+  scale_fill_manual(values = disorder_colors) +
+  ggtitle("People's disorders distribution")+
+  labs(x = "Disorder", y = "Number of People")+
+  theme(
+    text = element_text(size = 16),
+    axis.text.x = element_text(size = 12),
+    axis.text.y = element_text(size = 12),
+    axis.title = element_text(size = 14)
+  )
+
+ggsave("Images/Network/Disorders_distribution_plot.png", plot = plt, width = 10, height = 6)
+
+plt
+```
+
+# Network Analysis
+
+Creating the network object
+```{r}
+net = graph_from_incidence_matrix(adj_mat, directed = F)
+str(net)
+table(V(net)$type)
+```
+
+```{r}
+rm(adj_mat)
+```
+
+
+Adding the disorders as nodes characteristics
+```{r}
+V(net)$disorder = ifelse(
+  V(net)$type,
+  ms_data$disorder[match(V(net)$name, ms_data$user_id)],
+  NA)
+```
+
+```{r}
+str(net)
+```
+
+## First look
+Let's take a first look to the network
+```{r}
+# Assigning colors
+disorder_colors = c(
+  "anxiety" = rgb(1, 0, 0, alpha = 0.4),       # Red with transparency
+  "depression" = rgb(0, 0, 1, alpha = 0.4),    # Blue with transparency
+  "ptsd" = rgb(0, 1, 0, alpha = 0.4),          # Green with transparency
+  "borderline" = rgb(1, 0.5, 0, alpha = 0.4),  # Orange with transparency
+  "panic" = rgb(0.5, 0, 0.5, alpha = 0.4),     # Purple with transparency
+  "bipolar" = rgb(1, 0.75, 0.8, alpha = 0.4)   # Pink with transparency
+)
+
+V(net)$color = ifelse(V(net)$type,
+                       disorder_colors[V(net)$disorder],
+                       rgb(1, 1, 0, alpha = 0.2) # Yellow with transparency
+)
+
+# Actually plotting
+plot(net, 
+     vertex.label = NA, 
+     vertex.size=(1+V(net)$type)*4,
+     vertex.frame.color = NA,
+     edge.color = rgb(0.4,0.4,0.4, alpha = 0.4))
+
+legend("bottomleft", 
+       legend = c(names(disorder_colors), "artists"),
+       fill = c(disorder_colors, rgb(1, 1, 0, alpha = 0.2)),
+       border = NA,
+       cex = 0.7)
+```
+
+Quite a mess..
+But still we can see that we have some users with no authors in common with the others, while the majority of the network is well connected.
+Also people with different type of diseases are well mixed.
+So from a first look it seems that the connection between a person and an author doesn't depend on the type of disorder he has. 
+
+## Projection over the users
+
+Let's try with the projections
+```{r}
+net_bp = bipartite_projection(net)
+net_pj = net_bp$proj2
+l_bp = layout_with_kk(net_pj)
+```
+
+
+```{r}
+plot(net_pj, 
+     vertex.label = NA, 
+     vertex.size = 5, 
+     layout = l_bp, 
+     vertex.frame.color = NA)
+
+legend("bottomleft", 
+       legend = names(disorder_colors),
+       fill = disorder_colors,
+       border = NA,
+       cex = 0.7)
+```
+This is quite messy too, but also here we can see that users are well mixed
+
+Let's take a look to the network of people with different diseases 
+```{r}
+net_bp_dep = induced_subgraph(net_pj, vids = V(net_pj)[V(net_pj)$disorder == "depression"])
+
+l_dep = layout_with_kk(net_bp_dep)
+
+plot(net_bp_dep, 
+     vertex.label = NA, 
+     vertex.size = 5, 
+     layout = l_dep,
+     vertex.frame.color = NA)
+title("Depression Network")
+```
+
+```{r}
+net_bp_anx = induced_subgraph(net_pj, vids = V(net_pj)[V(net_pj)$disorder == "anxiety"])
+
+l_anx = layout_with_kk(net_bp_anx)
+
+plot(net_bp_anx, 
+     vertex.label = NA, 
+     vertex.size = 5, 
+     layout = l_anx,
+     vertex.frame.color = NA)
+title("Anxiety Network")
+```
+
+```{r}
+net_bp_ptsd = induced_subgraph(net_pj, vids = V(net_pj)[V(net_pj)$disorder == "ptsd"])
+
+l_ptsd = layout_with_fr(net_bp_ptsd)
+
+plot(net_bp_ptsd, 
+     vertex.label = NA, 
+     vertex.size = 5, 
+     layout = l_ptsd,
+     vertex.frame.color = NA)
+title("Ptsd Network")
+```
+
+```{r}
+net_bp_bi = induced_subgraph(net_pj, vids = V(net_pj)[V(net_pj)$disorder == "bipolar"])
+
+l_bi = layout_with_fr(net_bp_bi)
+
+plot(net_bp_bi, 
+     vertex.label = NA, 
+     vertex.size = 5, 
+     layout = l_bi,
+     vertex.frame.color = NA)
+title("Bipolar Network")
+```
+
+```{r}
+net_bp_bor = induced_subgraph(net_pj, vids = V(net_pj)[V(net_pj)$disorder == "borderline"])
+
+l_bor = layout_with_fr(net_bp_bor)
+
+plot(net_bp_bor, 
+     vertex.label = NA, 
+     vertex.size = 5, 
+     layout = l_bor,
+     vertex.frame.color = NA)
+title("Borderline Network")
+```
+
+```{r}
+net_bp_pan = induced_subgraph(net_pj, vids = V(net_pj)[V(net_pj)$disorder == "panic"])
+
+l_pan = layout_with_fr(net_bp_pan)
+
+plot(net_bp_pan, 
+     vertex.label = NA, 
+     vertex.size = 5, 
+     layout = l_pan,
+     vertex.frame.color = NA)
+title("Panic Network")
+```
+
+We can see that the majority of people appertaining to the same group are well connected.
+
+### Clusters
+
+Let's take a look to a cluster of people from different groups to see also how they connect to each others
+
+Firstly we create the clusters
+```{r}
+set.seed(1)
+clusters = cluster_louvain(net_pj)
+cluster_sizes = table(membership(clusters))
+cluster_sizes[cluster_sizes>1]
+```
+
+We can see that there are 5 main clusters. Let's see how they are composed.
+
+```{r}
+for(i in 1:5){
+  subgraph = induced_subgraph(net_pj, which(membership(clusters) == i))
+  
+  plot(subgraph,
+       vertex.label = NA,
+       vertex.size = 5,
+       layout = layout_with_kk,
+       vertex.frame.color = NA)
+  
+  title(paste("Cluster", i, "(", cluster_sizes[i], "nodes)"))
+  
+  legend("bottomleft",
+         legend = names(disorder_colors),
+         fill = disorder_colors,
+         border = NA,
+         cex = 0.7)
+  
+  print(paste("Composition cluster", i))
+  print(table(V(subgraph)$disorder))
+}
+```
+
+To understand better what's going on with the edges I will assign a black color to edges that are connecting two nodes with the same disorder, and leave the gray one otherwise
+
+```{r}
+link_type = table(V(net_pj)$disorder[match(ends(net_pj, E(net_pj))[,1], V(net_pj)$name)] == V(net_pj)$disorder[match(ends(net_pj, E(net_pj))[,2], V(net_pj)$name)])
+link_type
+```
+The last string gives FALSE if the edge is connecting two nodes with different $disorders, and TRUE otherwise.
+Than is summing up the numbers in a table.
+So in the dataset, the number of links between people with different disorders (FALSE) are `r link_type[1]`, and the others (TRUE) are `r link_type[2]`
+These are a lot of edges considering that we were starting from `r length(ends(net,E(net))[,1])` in the bipartite network.
+
+Let's first explain why
+
+## Degree distribution for artists nodes
+
+```{r}
+degree_artists = degree(net, v = V(net)[!type])
+
+deg_dist_art = degree_distribution(net, cumulative=T, v = V(net)[!type])
+plot(x=0:max(degree_artists), 
+     y=1-deg_dist_art, 
+     col="yellow3", 
+     type = "l",
+     xlab="Degree", 
+     ylab="Cumulative Frequency",
+     main = "Cumulative Degree Distribution for Artists")
+```
+
+```{r}
+mean(degree_artists)
+degree_artists %>% table()
+```
+
+We can see that the average degree for artist nodes is almost 5, and only this is a factor that makes the edge count higher when we project the network over the users.
+On top of that, the distribution of this network has a long tail, with most artists nodes having low degrees but a few nodes having very high degrees.
+In other words, most artists are "niche" ones, but there are a considerable number of them that are shared between the majority of the people in the network.
+The second type of artists nodes are called hubs.
+When we project a network with hubs over the users, the edges count explodes.
+
+But let's go back to the visualization of the network with the distinction between edges
+
+```{r}
+E(net_pj)$color = ifelse(V(net_pj)$disorder[match(ends(net_pj, E(net_pj))[,1], V(net_pj)$name)] == V(net_pj)$disorder[match(ends(net_pj, E(net_pj))[,2], V(net_pj)$name)],
+                         rgb(0, 0, 0, alpha = 0.3),         # Black with transparency
+                         rgb(0.8, 0.8, 0.8, alpha = 0.3)    # Really Light Gray with transparency
+  )
+```
+
+
+```{r}
+for(i in 1:5){
+  subgraph = induced_subgraph(net_pj, which(membership(clusters) == i))
+  
+  plot(subgraph,
+       vertex.label = NA,
+       vertex.size = 5,
+       layout = layout_with_kk,
+       vertex.frame.color = NA)
+  
+  title(paste("Cluster", i, "(", cluster_sizes[i], "nodes)"))
+  
+  legend("bottomleft",
+         legend = names(disorder_colors),
+         fill = disorder_colors,
+         border = NA,
+         cex = 0.7)
+  
+  print(paste("Composition cluster", i))
+  print(table(E(subgraph)$color))
+  density_score = (2 * ecount(subgraph)) / (vcount(subgraph) * (vcount(subgraph) - 1))
+  print(paste("Density score cluster", i, ":", density_score))
+}
+```
+
+What if we try to dig deeper?
+We can cluster a cluster and see if we discover some strange patterns
+
+```{r}
+set.seed(1)
+subgraph = induced_subgraph(net_pj, which(membership(clusters) == 1))
+sub_clusters = cluster_leading_eigen(subgraph)
+cluster_sizes = table(membership(sub_clusters))
+cluster_sizes
+```
+
+```{r}
+# Lowering vertex transparency
+
+disorder_colors = c(
+  "anxiety" = rgb(1, 0, 0, alpha = 0.4),       # Red with transparency
+  "depression" = rgb(0, 0, 1, alpha = 0.4),    # Blue with transparency
+  "ptsd" = rgb(0, 1, 0, alpha = 0.4),          # Green with transparency
+  "borderline" = rgb(1, 0.5, 0, alpha = 0.4),  # Orange with transparency
+  "panic" = rgb(0.5, 0, 0.5, alpha = 0.4),     # Purple with transparency
+  "bipolar" = rgb(1, 0.75, 0.8, alpha = 0.4)   # Pink with transparency
+)
+
+V(subgraph)$color = disorder_colors[V(subgraph)$disorder]
+```
+
+```{r}
+for(i in 1:6){
+  subsubgraph = induced_subgraph(subgraph, which(membership(sub_clusters) == i))
+  
+  plot(subsubgraph,
+       vertex.label = NA,
+       vertex.size = 5,
+       layout = layout_with_kk)
+  
+  title(paste("Subcluster", i, "(", cluster_sizes[i], "nodes)"))
+  
+  legend("bottomleft",
+         legend = names(disorder_colors),
+         fill = disorder_colors,
+         border = NA,
+         cex = 0.7)
+  
+  print(paste("Composition cluster", i))
+  print(table(V(subsubgraph)$disorder))
+  print(paste("Same/diffrent type edge in cluster", i))
+  print(table(E(subsubgraph)$color))
+  
+  density_score = (2 * ecount(subsubgraph)) / (vcount(subsubgraph) * (vcount(subsubgraph) - 1))
+  print(paste("Density score cluster", i, ":", density_score))
+}
+```
+
+Also this really small groups are well mixed, most of them with high density score, one of which being even over 65%.
+That's probably due to the presence of hubs that we highlighted earlier
+
+## Back to the bipartite
+
+Let's try to Visualize the clusters reintroducing artists nodes
+```{r}
+for(i in 1:6){
+  subsubgraph = induced_subgraph(subgraph, which(membership(sub_clusters) == i))
+  cluster_nodes = V(subsubgraph)$name
+  connecting_nodes = unique(unlist(neighborhood(net, order = 1, nodes = cluster_nodes)))
+  
+  full_subgraph = induced_subgraph(net, vids = connecting_nodes)
+  
+  plot(full_subgraph,
+       vertex.label = NA,
+       vertex.size = 5,
+       vertex.frame.color = NA,
+       layout = layout_with_kk)
+  
+  title(paste("Subcluster", i))
+  
+  legend("bottomleft", 
+         legend = c(names(disorder_colors), "artists"),
+         fill = c(disorder_colors, rgb(1, 1, 0, alpha = 0.2)),
+         border = NA,
+         cex = 0.7)
+  
+  degree_artists = degree(full_subgraph, v = V(full_subgraph)[!type])
+  
+  print(paste("Artists degrees of cluster", i))
+  print(table(degree_artists))
+}
+```
+
+These plots highlight more the fact that a big chunk of artist are niche one.
+Let's try to highlight hubs instead, removing all artists that are listened by < 4 users
+
+## Hubs hilight
+
+```{r}
+for(i in 1:6){
+  subsubgraph = induced_subgraph(subgraph, which(membership(sub_clusters) == i))
+  cluster_nodes = V(subsubgraph)$name
+  connecting_nodes = unique(unlist(neighborhood(net, order = 1, nodes = cluster_nodes)))
+  
+  full_subgraph = induced_subgraph(net, vids = connecting_nodes)
+  
+  degree_artists = degree(full_subgraph, v = V(full_subgraph)[!type])
+  users = V(full_subgraph)[type]
+  artists = V(full_subgraph)[!type]
+  high_degree_artists = artists[degree_artists > 3]
+  
+  high_degree_full_subgraph = induced_subgraph(full_subgraph, vids = c(users, high_degree_artists))
+  
+  plot(high_degree_full_subgraph,
+       vertex.label = NA,
+       vertex.size = 5,
+       edge.color = rgb(0.4,0.4,0.4, alpha = 0.4),
+       layout = layout_with_kk)
+  
+  title(paste("Subcluster", i))
+  
+  legend("bottomleft", 
+         legend = c(names(disorder_colors), "artists"),
+         fill = c(disorder_colors, rgb(1, 1, 0, alpha = 0.2)),
+         border = NA,
+         cex = 0.7)
+  
+  high_degree_artists = degree(high_degree_full_subgraph, v = V(high_degree_full_subgraph)[!type])
+  
+  print(paste("Artists degrees of cluster", i))
+  print(table(high_degree_artists))
+}
+```
+
+# More network plotting
+
+Now that we know that in our data the majority of the artists are listened by only one person (so they are not useful for connecting edges) we can try to plot again the network without this nodes
+I'm removing also disconnected user nodes for visualization purposes
+
+```{r}
+degree_artists = degree(net, v = V(net)[!type])
+artists = V(net)[!type]
+artists_to_keep = artists[degree_artists > 1]
+
+net2 = induced_subgraph(net, vids = c(artists_to_keep, V(net)[type]))
+
+degree_users = degree(net2, v = V(net2)[type])
+users = V(net2)[type]
+users_to_keep = users[degree_users > 0]
+
+net2 = induced_subgraph(net2, vids = c(V(net2)[!type], users_to_keep))
+
+plot(net2, 
+     vertex.label = NA, 
+     vertex.size=(1+V(net2)$type)*4,
+     vertex.frame.color = NA,
+     edge.color = rgb(0.8,0.8,0.8, alpha = 0.4))
+
+legend("bottomleft", 
+       legend = c(names(disorder_colors), "artists"),
+       fill = c(disorder_colors, rgb(1, 1, 0, alpha = 0.2)),
+       border = NA,
+       cex = 0.7)
+```
+
+Not helpful at all, so let's try to cluster starting from the bipartite network without the last removals
+
+## CLustering on the bipartite network
+
+```{r}
+set.seed(0)
+clusters = cluster_louvain(net2)
+cluster_sizes = table(membership(clusters))
+cluster_sizes
+```
+
+```{r}
+for(i in 1:10){
+  subgraph = induced_subgraph(net2, which(membership(clusters) == i))
+  
+  plot(subgraph,
+       vertex.label = NA,
+       vertex.size = 5,
+       layout = layout_with_kk,
+       vertex.frame.color = c(NA, "grey15")[V(net2)$type+1])
+  
+  title(paste("Cluster", i, "(", cluster_sizes[i], "nodes)"))
+  
+  legend("bottomleft", 
+         legend = c(names(disorder_colors), "artists"),
+         fill = c(disorder_colors, rgb(1, 1, 0, alpha = 0.2)),
+         border = NA,
+         cex = 0.7)
+  
+  print(paste("Composition cluster", i))
+  print(table(V(subgraph)$disorder))
+  
+  degree_artists = degree(subgraph, v = V(subgraph)[!type])
+  
+  print(paste("Artists degrees of cluster", i))
+  print(table(degree_artists))
+}
+```
+
+We can observe two main shapes for the plots, that are due to the presence or not of hubs in the cluster.
+If we do the same thing as before (removing low degree artists) here is what happens:
+
+```{r}
+for(i in 1:10){
+  subgraph = induced_subgraph(net2, which(membership(clusters) == i))
+  
+  degree_artists = degree(subgraph, v = V(subgraph)[!type])
+  users = V(subgraph)[type]
+  artists = V(subgraph)[!type]
+  high_degree_artists = artists[degree_artists > 3]
+  
+  high_degree_subgraph = induced_subgraph(subgraph, vids = c(users, high_degree_artists))
+  
+  plot(high_degree_subgraph,
+       vertex.label = NA,
+       vertex.size = 5,
+       edge.color = rgb(0.4,0.4,0.4, alpha = 0.4),
+       layout = layout_with_kk)
+  
+  title(paste("Subcluster", i))
+  
+  legend("bottomleft", 
+         legend = c(names(disorder_colors), "artists"),
+         fill = c(disorder_colors, rgb(1, 1, 0, alpha = 0.2)),
+         border = NA,
+         cex = 0.7)
+  
+  high_degree_artists = degree(high_degree_subgraph, v = V(high_degree_subgraph)[!type])
+  
+  print(paste("Artists degrees of cluster", i))
+  print(table(high_degree_artists))
+}
+```
+
+Communities that where clustered around hubs remain mostly intact and maintain the shape of one giant component.
+On the other hand, smaller communities without high influential points lost a good percentage of people from the main network.
+
+# Lyrics analysis
+## Sentiment analysis
+
+So far we learned that people with the same disorders are not spread around the same artists.
+But same artists can produce different types of songs, with different topics and different emotions attached to them
+Let's try to dig into this aspect
+
+```{r}
+#library(syuzhet)
+#sentiment = get_nrc_sentiment(ms_data$cleaned_lyric)
+```
+
+```{r}
+#head(sentiment)
+```
+
+```{r}
+#ms_sent_data = cbind(ms_data, sentiment)
+#write.csv(ms_sent_data, "final_cleaned_lyrics_with_sentiment.csv", row.names = FALSE)
+```
+
+```{r}
+ms_sent_data = read.csv("final_cleaned_lyrics_with_sentiment.csv")
+head(ms_sent_data)
+```
+
+
+```{r}
+# Summarize the general distribution of sentiments
+sentiment_totals = colSums(ms_sent_data[, c("anger", "anticipation", "disgust", "fear", "joy", 
+                                             "sadness", "surprise", "trust")])
+
+# Create a data frame for plotting
+sentiment_df = data.frame(
+  Sentiment = names(sentiment_totals),
+  Count = as.numeric(sentiment_totals)
+)
+
+# Plot for general distribution of sentiments
+ggplot(sentiment_df, aes(x = Sentiment, y = Count, fill = Sentiment)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(
+    title = "General Distribution of Sentiments",
+    x = "Sentiment",
+    y = "Count"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+```{r}
+# Summarize the positive/negative sentiments
+pos_neg_totals = colSums(ms_sent_data[, c("positive", "negative")])
+
+# Create a data frame for positive/negative plotting
+pos_neg_df = data.frame(
+  Sentiment = c("Positive", "Negative"),
+  Count = as.numeric(pos_neg_totals)
+)
+
+# Plot for positive/negative sentiment distribution
+ggplot(pos_neg_df, aes(x = Sentiment, y = Count, fill = Sentiment)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(
+    title = "Positive vs Negative Sentiment Distribution",
+    x = "Sentiment",
+    y = "Count"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+disorder_colors = c(
+  "anxiety" = rgb(1, 0, 0),       # Red 
+  "depression" = rgb(0, 0, 1),    # Blue
+  "ptsd" = rgb(0, 1, 0),          # Green
+  "borderline" = rgb(1, 0.5, 0),  # Orange
+  "panic" = rgb(0.5, 0, 0.5),     # Purple
+  "bipolar" = rgb(1, 0.75, 0.8)   # Pink
+)
+```
+
+
+```{r}
+# Select relevant columns (disorder and sentiment scores)
+relevant_columns = c("disorder", "anger", "anticipation", "disgust", "fear", 
+                      "joy", "sadness", "surprise", "trust")
+
+# Aggregate sentiment scores by disorder
+disorder_sentiments = ms_sent_data[, relevant_columns] %>%
+  group_by(disorder) %>%
+  summarise(across(everything(), sum, na.rm = TRUE)) %>%
+  pivot_longer(cols = -disorder, names_to = "Sentiment", values_to = "Count")
+
+# Plot emotions comparison between disorders
+ggplot(disorder_sentiments, aes(x = Sentiment, y = Count, fill = disorder)) +
+  scale_fill_manual(values = disorder_colors) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_minimal() +
+  labs(
+    title = "Comparison of Emotions Across Mental Disorders",
+    x = "Sentiment",
+    y = "Total Count",
+    fill = "Disorder"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+This is not really helpful because the plot pretty much highlight always the general distribution of users between disorders.
+Let's try to work with percentages
+
+```{r}
+# Select relevant columns (disorder and sentiment scores)
+relevant_columns = c("disorder", "anger", "anticipation", "disgust", "fear", 
+                      "joy", "sadness", "surprise", "trust")
+
+# Aggregate sentiment scores by disorder
+disorder_sentiments = ms_sent_data[, relevant_columns] %>%
+  group_by(disorder) %>%
+  summarise(across(everything(), sum, na.rm = TRUE)) %>%
+  mutate(Total = rowSums(across(where(is.numeric)))) %>%
+  pivot_longer(cols = -c(disorder, Total), names_to = "Sentiment", values_to = "Count") %>%
+  mutate(Percentage = (Count / Total) * 100)
+
+# Plot emotions comparison as percentages
+ggplot(disorder_sentiments, aes(x = Sentiment, y = Percentage, fill = disorder)) +
+  scale_fill_manual(values = disorder_colors) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_minimal() +
+  labs(
+    title = "Comparison of Sentiments Across Mental Disorders (Percentage)",
+    x = "Sentiment",
+    y = "Percentage",
+    fill = "Disorder"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Too similar, doesn't give any messages.
+That because every song is categorized as multiple sentiments, giving a score that is proportional to how much that sentiment is present in the song.
+Let's try to take only the highest sentiment for each song
+
+```{r}
+# Select relevant columns (disorder and sentiment scores)
+relevant_columns = c("disorder", "anger", "disgust", "fear", 
+                      "joy", "sadness", "surprise", "trust")
+
+# Identify the highest sentiment for each row and assign +1
+disorder_sentiments = ms_sent_data[, relevant_columns] %>%
+  mutate(dominant_sentiment = apply(.[, -1], 1, function(x) names(x)[which.max(x)])) %>%
+  group_by(disorder, dominant_sentiment) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  # Sum all counts per disorder
+  group_by(disorder) %>%
+  mutate(total_count = sum(count)) %>%
+  # Calculate percentage for each sentiment
+  mutate(percentage = (count / total_count) * 100)
+
+# Plot the results with custom colors
+ggplot(disorder_sentiments, aes(x = dominant_sentiment, y = percentage, fill = disorder)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = disorder_colors) +  # Use custom colors
+  theme_minimal() +
+  labs(
+    title = "Dominant Sentiment Comparison Across Mental Disorders (Percentage)",
+    x = "Dominant Sentiment",
+    y = "Percentage",
+    fill = "Disorder"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+## Topic Analysis
+
+The topic modelling has been done in Python using the Top2Vec library. Here we have the dataset that includes the topic, the list of more common words for each topic and the topic name that I assigned based on the more common words.
+
+```{r}
+ms_topic = read.csv("final_cleaned_lyrics_with_topics.csv")
+head(ms_topic)
+```
+
+```{r}
+disorder_colors = c(
+  "anxiety" = rgb(1, 0, 0),       # Red 
+  "depression" = rgb(0, 0, 1),    # Blue
+  "ptsd" = rgb(0, 1, 0),          # Green
+  "borderline" = rgb(1, 0.5, 0),  # Orange
+  "panic" = rgb(0.5, 0, 0.5),     # Purple
+  "bipolar" = rgb(1, 0.75, 0.8)   # Pink
+)
+```
+
+```{r}
+# Summarize the count for each topic
+topic_count = ms_topic %>%
+  count(topic_name) %>%
+  arrange(desc(n))
+
+# Reorder the topic_name based on the count
+ms_topic$topic_name = factor(ms_topic$topic_name, levels = topic_count$topic_name)
+
+# General Distribution of Topics
+plt = ggplot(ms_topic, aes(x = factor(topic_name))) +
+  geom_bar(aes(fill = factor(topic_name)), color = "black") +
+  scale_fill_manual(values = rainbow(20)) +  # Rainbow colors for topics
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(x = "Topic", y = "Count", title = "General Distribution of Topics") +
+  guides(
+    fill = guide_legend(
+      title = "Topic",           # Title of the legend
+      title.position = "top",    # Position of the title
+      label.position = "right",  # Position of the labels
+      label.theme = element_text(size = 8),  # Label size
+      keyheight = unit(0.5, "lines"),  # Size of the legend keys
+      keywidth = unit(0.5, "lines")   # Width of the legend keys
+    )
+  )
+
+# Save the plot
+ggsave("Images/Songs_Topic/general_distribution_plot.png", plot = plt, width = 10, height = 6)
+
+# Display the plot
+plt
+```
+
+```{r}
+# Filter out "Playful Beats" from the dataset
+ms_topic_filtered = ms_topic %>%
+  filter(topic_name != "Playful Beats")
+
+# Combined Distribution of Topics by Disorder using facets (after filtering)
+plt = ggplot(ms_topic_filtered, aes(x = factor(topic_name), fill = topic_name)) +
+  geom_bar(position = "dodge", color = "black") +
+  scale_fill_manual(values = rainbow(20)) + 
+  labs(x = "Topic", y = "Count", title = "Distribution of Topics by Disorder") +
+  theme_minimal() +
+  theme(axis.text.x = element_blank()) +
+  facet_wrap(~ disorder, scales = "free_y") +  # Create facets by disorder
+  guides(
+    fill = guide_legend(
+      title = "Topics",           # Title of the legend
+      title.position = "top",       # Position of the title
+      label.position = "right",     # Position of the labels
+      label.theme = element_text(size = 8),  # Label size
+      keyheight = unit(0.5, "lines"),  # Size of the legend keys
+      keywidth = unit(0.5, "lines")   # Width of the legend keys
+    )
+  )
+
+ggsave("Images/Songs_Topic/disorders_distribution_plot.png", plot = plt, width = 10, height = 6)
+
+plt
+```
+
+```{r}
+# Summarize the counts by disorder and topic, then calculate the percentage
+topic_distribution = ms_topic %>%
+  group_by(disorder, topic, topic_name) %>%
+  summarise(Count = n(), .groups = 'drop') %>%
+  group_by(disorder) %>%
+  mutate(Total = sum(Count)) %>%
+  ungroup() %>%
+  mutate(Percentage = (Count / Total) * 100,
+         Topic_Group = ifelse(topic <= 9, 1, 2))
+
+# For loop to create and save plots for each group
+for (group_num in 1:2) {
+  # Filter data based on Topic_Group
+  topic_group_data = topic_distribution %>% filter(Topic_Group == group_num)
+  
+  # Create plot
+  p = ggplot(topic_group_data, aes(x = factor(topic_name), y = Percentage, fill = disorder)) +
+    scale_fill_manual(values = disorder_colors) +
+    geom_bar(stat = "identity", position = "dodge", color = "black") +
+    theme_minimal() +
+    labs(
+      title = paste("Distribution of Topics by Disorder (Percentage) - Group", group_num),
+      x = "Topic",
+      y = "Percentage",
+      fill = "Disorder"
+    ) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  print(p)
+  
+  # Save the plot
+  ggsave(paste0("Images/Songs_Topic/topic_distribution_group_", group_num, ".png"), plot = p, width = 8, height = 6)
+}
+```
+
+```{r}
+rm(list = ls())
+```
+
+
+# Twitts Analysis
+
+Now I will repeat pretty much the same steps with some small adjustments
+
+## Sentiment analysis
+
+```{r}
+#tw_data = read.csv("cleaned_tweets_dataset.csv")
+```
+
+```{r}
+#head(tw_data)
+```
+
+```{r}
+# library(syuzhet)
+# sentiment = get_nrc_sentiment(tw_data$cleaned_text) # this took 12hrs
+```
+
+```{r}
+#head(sentiment)
+```
+
+```{r}
+#tw_sent_data = cbind(tw_data, sentiment)
+#write.csv(tw_sent_data, "cleaned_tweets_with_sentiment.csv", row.names = FALSE)
+```
+
+```{r}
+tw_sent_data = read.csv("cleaned_tweets_with_sentiment.csv")
+head(tw_sent_data)
+```
+
+```{r}
+# Summarize the general distribution of sentiments
+sentiment_totals = colSums(tw_sent_data[, c("anger", "anticipation", "disgust", "fear", "joy", 
+                                             "sadness", "surprise", "trust")])
+
+# Create a data frame for plotting
+sentiment_df = data.frame(
+  Sentiment = names(sentiment_totals),
+  Count = as.numeric(sentiment_totals)
+)
+
+# Plot for general distribution of sentiments
+ggplot(sentiment_df, aes(x = Sentiment, y = Count, fill = Sentiment)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(
+    title = "General Distribution of Tweetts Sentiments",
+    x = "Sentiment",
+    y = "Count"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+# Summarize the positive/negative sentiments
+pos_neg_totals = colSums(tw_sent_data[, c("positive", "negative")])
+
+# Create a data frame for positive/negative plotting
+pos_neg_df = data.frame(
+  Sentiment = c("Positive", "Negative"),
+  Count = as.numeric(pos_neg_totals)
+)
+
+# Plot for positive/negative sentiment distribution
+ggplot(pos_neg_df, aes(x = Sentiment, y = Count, fill = Sentiment)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(
+    title = "Positive vs Negative Twitter Sentiment Distribution",
+    x = "Sentiment",
+    y = "Count"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+disorder_colors = c(
+  "anxiety" = rgb(1, 0, 0),       # Red 
+  "depression" = rgb(0, 0, 1),    # Blue
+  "ptsd" = rgb(0, 1, 0),          # Green
+  "borderline" = rgb(1, 0.5, 0),  # Orange
+  "panic" = rgb(0.5, 0, 0.5),     # Purple
+  "bipolar" = rgb(1, 0.75, 0.8)   # Pink
+)
+```
+
+```{r}
+# Select relevant columns (disorder and sentiment scores)
+relevant_columns = c("disorder", "anger", "anticipation", "disgust", "fear", 
+                      "joy", "sadness", "surprise", "trust")
+
+# Aggregate sentiment scores by disorder
+disorder_sentiments = tw_sent_data[, relevant_columns] %>%
+  group_by(disorder) %>%
+  summarise(across(everything(), sum, na.rm = TRUE)) %>%
+  pivot_longer(cols = -disorder, names_to = "Sentiment", values_to = "Count")
+
+# Plot emotions comparison between disorders
+ggplot(disorder_sentiments, aes(x = Sentiment, y = Count, fill = disorder)) +
+  scale_fill_manual(values = disorder_colors) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_minimal() +
+  labs(
+    title = "Comparison of Emotions Across Mental Disorders",
+    x = "Sentiment",
+    y = "Total Count",
+    fill = "Disorder"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+# Select relevant columns (disorder and sentiment scores)
+relevant_columns = c("disorder", "anger", "anticipation", "disgust", "fear", 
+                      "joy", "sadness", "surprise", "trust")
+
+# Aggregate sentiment scores by disorder
+disorder_sentiments = tw_sent_data[, relevant_columns] %>%
+  group_by(disorder) %>%
+  summarise(across(everything(), sum, na.rm = TRUE)) %>%
+  mutate(Total = rowSums(across(where(is.numeric)))) %>%
+  pivot_longer(cols = -c(disorder, Total), names_to = "Sentiment", values_to = "Count") %>%
+  mutate(Percentage = (Count / Total) * 100)
+
+# Plot emotions comparison as percentages
+ggplot(disorder_sentiments, aes(x = Sentiment, y = Percentage, fill = disorder)) +
+  scale_fill_manual(values = disorder_colors) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_minimal() +
+  labs(
+    title = "Comparison of Sentiments Across Mental Disorders (Percentage)",
+    x = "Sentiment",
+    y = "Percentage",
+    fill = "Disorder"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+# Select relevant columns (disorder and sentiment scores)
+relevant_columns = c("disorder", "anger", "disgust", "fear", 
+                      "joy", "sadness", "surprise", "trust")
+
+# Identify the highest sentiment for each row and assign +1
+disorder_sentiments = tw_sent_data[, relevant_columns] %>%
+  mutate(dominant_sentiment = apply(.[, -1], 1, function(x) names(x)[which.max(x)])) %>%
+  group_by(disorder, dominant_sentiment) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  # Sum all counts per disorder
+  group_by(disorder) %>%
+  mutate(total_count = sum(count)) %>%
+  # Calculate percentage for each sentiment
+  mutate(percentage = (count / total_count) * 100)
+
+# Plot the results with custom colors
+ggplot(disorder_sentiments, aes(x = dominant_sentiment, y = percentage, fill = disorder)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = disorder_colors) +  # Use custom colors
+  theme_minimal() +
+  labs(
+    title = "Dominant Sentiment Comparison Across Mental Disorders (Percentage)",
+    x = "Dominant Sentiment",
+    y = "Percentage",
+    fill = "Disorder"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+rm(list = ls())
+```
+
+
+## Topic Analysis
+
+As for the lyrics, the topic modelling for tweets has been done in Python using the Top2Vec library. Here we have the dataset that includes the topic, the list of more common words for each topic and the topic name that I assigned based on the more common words.
+The only difference in this case is that (due to machine limitations) the analysis focus only on a random sample of tweets selected from those of each user, in proportion with the total number of tweets he wrote.
+
+```{r}
+tw_topic = read.csv("final_twitter_with_topics.csv")
+head(tw_topic)
+```
+
+```{r}
+disorder_colors = c(
+  "anxiety" = rgb(1, 0, 0),       # Red 
+  "depression" = rgb(0, 0, 1),    # Blue
+  "ptsd" = rgb(0, 1, 0),          # Green
+  "borderline" = rgb(1, 0.5, 0),  # Orange
+  "panic" = rgb(0.5, 0, 0.5),     # Purple
+  "bipolar" = rgb(1, 0.75, 0.8)   # Pink
+)
+```
+
+```{r}
+# Summarize the count for each topic
+topic_count = tw_topic %>%
+  count(topic_name) %>%
+  arrange(desc(n))
+
+# Reorder the topic_name based on the count
+tw_topic$topic_name = factor(tw_topic$topic_name, levels = topic_count$topic_name)
+
+# General Distribution of Topics
+plt = ggplot(tw_topic, aes(x = factor(topic_name))) +
+  geom_bar(aes(fill = factor(topic_name)), color = "black") +
+  scale_fill_manual(values = rainbow(20)) +  # Rainbow colors for topics
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(x = "Topic", y = "Count", title = "General Distribution of Topics") +
+  guides(
+    fill = guide_legend(
+      title = "Topic",           # Title of the legend
+      title.position = "top",    # Position of the title
+      label.position = "right",  # Position of the labels
+      label.theme = element_text(size = 8),  # Label size
+      keyheight = unit(0.5, "lines"),  # Size of the legend keys
+      keywidth = unit(0.5, "lines")   # Width of the legend keys
+    )
+  )
+
+# Save the plot
+ggsave("Images/Twitter_Topic/general_distribution_plot.png", plot = plt, width = 10, height = 6)
+
+# Display the plot
+plt
+```
+
+```{r}
+# Filter out "Playful Beats" from the dataset
+tw_topic_filtered = tw_topic %>%
+  filter(topic_name != "Playful Beats")
+
+# Combined Distribution of Topics by Disorder using facets (after filtering)
+plt = ggplot(tw_topic_filtered, aes(x = factor(topic_name), fill = topic_name)) +
+  geom_bar(position = "dodge", color = "black") +
+  scale_fill_manual(values = rainbow(20)) + 
+  labs(x = "Topic", y = "Count", title = "Distribution of Topics by Disorder") +
+  theme_minimal() +
+  theme(axis.text.x = element_blank()) +
+  facet_wrap(~ disorder, scales = "free_y") +  # Create facets by disorder
+  guides(
+    fill = guide_legend(
+      title = "Topics",           # Title of the legend
+      title.position = "top",       # Position of the title
+      label.position = "right",     # Position of the labels
+      label.theme = element_text(size = 8),  # Label size
+      keyheight = unit(0.5, "lines"),  # Size of the legend keys
+      keywidth = unit(0.5, "lines")   # Width of the legend keys
+    )
+  )
+
+ggsave("Images/Twitter_topic/disorders_distribution_plot.png", plot = plt, width = 10, height = 6)
+
+plt
+```
+
+```{r}
+# Summarize the counts by disorder and topic, then calculate the percentage
+topic_distribution = tw_topic %>%
+  group_by(disorder, topic, topic_name) %>%
+  summarise(Count = n(), .groups = 'drop') %>%
+  group_by(disorder) %>%
+  mutate(Total = sum(Count)) %>%
+  ungroup() %>%
+  mutate(Percentage = (Count / Total) * 100,
+         Topic_Group = ifelse(topic <= 9, 1, 2))
+
+# For loop to create and save plots for each group
+for (group_num in 1:2) {
+  # Filter data based on Topic_Group
+  topic_group_data = topic_distribution %>% filter(Topic_Group == group_num)
+  
+  # Create plot
+  p = ggplot(topic_group_data, aes(x = factor(topic_name), y = Percentage, fill = disorder)) +
+    scale_fill_manual(values = disorder_colors) +
+    geom_bar(stat = "identity", position = "dodge", color = "black") +
+    theme_minimal() +
+    labs(
+      title = paste("Distribution of Topics by Disorder (Percentage) - Group", group_num),
+      x = "Topic",
+      y = "Percentage",
+      fill = "Disorder"
+    ) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  print(p)
+  
+  # Save the plot
+  ggsave(paste0("Images/Twitter_topic/topic_distribution_group_", group_num, ".png"), plot = p, width = 8, height = 6)
+}
+```
+
+# Final Analysis: is the mood of these persons influenced by the music they listen to?
+
+Now I will explore the significance of the disorders, sentiments of the songs and their topics on the tweets sentiment.
+
+```{r}
+ms_sent_data = read.csv("final_cleaned_lyrics_with_sentiment.csv")
+ms_topic = read.csv("final_cleaned_lyrics_with_topics.csv")
+tw_sent_data = read.csv("cleaned_tweets_with_sentiment.csv")
+```
+
+Firstly I will take for each person the more common sentiment among all the songs that he listen to, choosed between anger, fear, joy, sadness and surprise
+
+```{r}
+dominant_sentiment_ms_data = ms_sent_data %>%
+  group_by(user_id, disorder) %>%
+  summarise(
+    anger = sum(anger),
+    fear = sum(fear),
+    joy = sum(joy),
+    sadness = sum(sadness),
+    .groups = 'drop'
+  )
+
+dominant_sentiment_ms_data = dominant_sentiment_ms_data %>%
+  rowwise() %>%
+  mutate(dominant_song_sentiment = names(cur_data())[which.max(c(anger, fear, joy, sadness)) + 2]) %>%
+  select(user_id, disorder, dominant_song_sentiment)
+
+dominant_sentiment_ms_data 
+```
+
+Than I will do the same thing with the songs_topic
+
+```{r}
+dominant_ms_topics = ms_topic %>%
+  group_by(user_id, disorder, topic_name) %>%
+  summarise(topic_count = n(), .groups = 'drop') %>%
+  group_by(user_id, disorder) %>%
+  slice_max(topic_count, n = 1) %>%
+  select(user_id, disorder, dominant_song_topic = topic_name)
+
+dominant_ms_topics
+```
+
+And finally I'm taking the general positive/negative sentiment of the tweets of each person and use the highest value as the reference for the general mood of a person
+
+```{r}
+dominant_sentiment_tw_data = tw_sent_data %>%
+  group_by(user_id, disorder) %>%
+  summarise(
+    positive = sum(positive),
+    negative = sum(negative),
+    .groups = 'drop'
+  )
+
+dominant_sentiment_tw_data = dominant_sentiment_tw_data %>%
+  rowwise() %>%
+  mutate(dominant_twit_sentiment = names(cur_data())[which.max(c(positive, negative)) + 2]) %>%
+  select(user_id, disorder, dominant_twit_sentiment)
+
+dominant_sentiment_tw_data
+```
+
+```{r}
+# Joining everything in one dataset
+big_final = dominant_sentiment_ms_data %>%
+  inner_join(dominant_ms_topics, by = c("user_id", "disorder")) %>%
+  inner_join(dominant_sentiment_tw_data, by = c("user_id", "disorder"))
+
+big_final$dominant_twit_sentiment = as.factor(big_final$dominant_twit_sentiment)
+head(big_final)
+```
+
+Then I fitted some logistic regressions models to see which variables has an influence on the mood of a person
+
+```{r}
+big_final$dominant_twit_sentiment = relevel(big_final$dominant_twit_sentiment, ref = "negative")
+
+# Fit logistic regression model
+model = glm(dominant_twit_sentiment ~ dominant_song_topic,
+             data = big_final, family = binomial)
+
+# Summary of the model
+summary(model)
+```
+
+Here wee see that one topic apart, songs topic are not statistically significant.
+However..
+
+```{r}
+big_final$dominant_twit_sentiment = relevel(big_final$dominant_twit_sentiment, ref = "positive")
+
+# Fit logistic regression model
+model = glm(dominant_twit_sentiment ~ disorder * dominant_song_sentiment ,
+             data = big_final, family = binomial)
+
+# Summary of the model
+summary(model)
+```
+
+From this model, we can see that the dominant_song_sentiment has a significant impact on the dominant_twit_sentiment, with "fear," "joy," and "sadness" being associated with a reduced likelihood of positive dominant_twit_sentiment compared to "anger." The interaction between dominant_song_sentiment and disorder appears less consistently significant, but there is evidence that sadness combined with certain disorders (e.g., panic and PTSD) may influence the likelihood of positive dominant_twit_sentiment.
+
+```{r}
+library(pROC)
+roc_curve = roc(big_final$dominant_twit_sentiment, fitted(model))
+plot(roc_curve)
+auc(roc_curve)
+```
+
+The Roc curve shows that the general model is not a good predictor of the mood of a person
+
+ What if we try to analyze only the positive vs negative of songs?
+ 
+```{r}
+dominant_sentiment_ms_data = ms_sent_data %>%
+  group_by(user_id, disorder) %>%
+  summarise(
+    positive = sum(positive),
+    negative = sum(negative),
+    .groups = 'drop'
+  )
+
+dominant_sentiment_ms_data = dominant_sentiment_ms_data %>%
+  rowwise() %>%
+  mutate(dominant_song_sentiment = names(cur_data())[which.max(c(positive, negative)) + 2]) %>%
+  select(user_id, disorder, dominant_song_sentiment)
+
+dominant_sentiment_ms_data 
+```
+ 
+```{r}
+# Joining everything in one dataset
+big_final = dominant_sentiment_ms_data %>%
+  inner_join(dominant_ms_topics, by = c("user_id", "disorder")) %>%
+  inner_join(dominant_sentiment_tw_data, by = c("user_id", "disorder"))
+
+big_final$dominant_twit_sentiment = as.factor(big_final$dominant_twit_sentiment)
+head(big_final)
+```
+ 
+```{r}
+big_final$dominant_twit_sentiment = relevel(big_final$dominant_twit_sentiment, ref = "positive")
+
+# Fit logistic regression model
+model = glm(dominant_twit_sentiment ~ disorder * dominant_song_sentiment ,
+             data = big_final, family = binomial)
+
+# Summary of the model
+summary(model)
+```
+
+Here we see again that the disorder is not significant for the mood of the person, and nieter the intercation terms are.
+
+However we see that the song sentiment positive is significant, with a negative effect
+
+```{r}
+big_final$dominant_twit_sentiment = relevel(big_final$dominant_twit_sentiment, ref = "positive")
+
+# Fit logistic regression model
+model = glm(dominant_twit_sentiment ~ dominant_song_sentiment ,
+             data = big_final, family = binomial)
+
+# Summary of the model
+summary(model)
+```
+
+This means that people that are listening to positive music are less likely to have positive mood. This could be interpreted as people who are in a bad mood prefer positive songs. 
+
+So it seems that the correlation that I'm seeking is the inverse of what I was expecting. From this analysis it seems that music can't influence people mood with a direct correlation, but the music that a person listen is chosed ad an inverse function of the mood. If we try to reverse the regression:
+
+```{r}
+big_final$dominant_song_sentiment = as.factor(big_final$dominant_song_sentiment)
+big_final$dominant_song_sentiment = relevel(big_final$dominant_song_sentiment, ref = "negative")
+
+# Fit logistic regression model
+model = glm(dominant_song_sentiment ~ disorder * dominant_twit_sentiment ,
+             data = big_final, family = binomial)
+
+# Summary of the model
+summary(model)
+```
+
+From this we see that individuals with negative mood are generally more likely to listen to positive songs compared to those with positive mood. PTSD shows a significant main effect, indicating that these individuals are also less likely to listen to negative songs overall. However, also in this case, there is no significant evidence that the relationship between mood and songs sentiments varies based on specific disorders.
+
+Let's see what happens if we fit the positive/negative mood over the emotion's scores of the songs.
+
+```{r}
+sum_sentiment_ms_data = ms_sent_data %>%
+  group_by(user_id, disorder) %>%
+  summarise(
+    anger = sum(anger),
+    fear = sum(fear),
+    joy = sum(joy),
+    sadness = sum(sadness),
+    .groups = 'drop'
+  )
+
+sum_sentiment_ms_data
+```
+
+```{r}
+count_ms_topics = ms_topic %>%
+  # Count the occurrences of each topic per user and disorder
+  count(user_id, disorder, topic_name) %>%
+  # Reshape to wide format
+  pivot_wider(names_from = topic_name, values_from = n, values_fill = 0)
+count_ms_topics
+```
+
+```{r}
+dominant_sentiment_tw_data = tw_sent_data %>%
+  group_by(user_id, disorder) %>%
+  summarise(
+    positive = sum(positive),
+    negative = sum(negative),
+    .groups = 'drop'
+  )
+
+dominant_sentiment_tw_data = dominant_sentiment_tw_data %>%
+  rowwise() %>%
+  mutate(dominant_twit_sentiment = names(cur_data())[which.max(c(positive, negative)) + 2]) %>%
+  select(user_id, disorder, dominant_twit_sentiment)
+
+dominant_sentiment_tw_data
+```
+
+
+```{r}
+big_final = sum_sentiment_ms_data %>%
+  inner_join(count_ms_topics, by = c("user_id", "disorder")) %>%
+  inner_join(dominant_sentiment_tw_data, by = c("user_id", "disorder"))
+
+big_final$dominant_twit_sentiment = as.factor(big_final$dominant_twit_sentiment)
+big_final
+```
+
+```{r}
+big_final$dominant_twit_sentiment = relevel(big_final$dominant_twit_sentiment, ref = "positive")
+model = glm(dominant_twit_sentiment ~ .-user_id, data = big_final, family = binomial)
+summary(model)
+```
+
+
+```{r}
+big_final = sum_sentiment_ms_data %>%
+  inner_join(dominant_sentiment_tw_data, by = c("user_id", "disorder"))
+
+big_final$dominant_twit_sentiment = as.factor(big_final$dominant_twit_sentiment)
+big_final
+```
+
+```{r}
+big_final$dominant_twit_sentiment = relevel(big_final$dominant_twit_sentiment, ref = "positive")
+model = glm(dominant_twit_sentiment ~ .-user_id, data = big_final, family = binomial)
+summary(model)
+```
+
+From this model the inverse correlation that was observed before is still present, with a statistical significance much higher. It can be seen that Joy (being the best emotion of the group) has a negative estimate, meaning that people that listen to songs with high joy scores are less likely to have a positive mood. The inverse can be observe for sadness, leading to a higher likelihood of being positive.
+Also emotion like fear and anger are statistically significant, with anger having the same effect of sadness while fear is much similar to joy.
+
+
+
+
