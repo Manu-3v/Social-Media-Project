@@ -9,4 +9,4 @@ Logistic regression demonstrated an inverse relationship between mood and song s
 of listening to positive songs and vice versa. Interestingly, no significant variation in this relationship was observed across different mental
 disorders, except for PTSD, which influenced overall song preferences.
 
-This was an individual project for the course SOCIAL MEDIA AND WEB ANALYTICS [EM1421] of the Master Degree in Data Analytics for Business and Society in Ca'Foscari University. 
+This was an individual project for the course SOCIAL MEDIA AND WEB ANALYTICS [EM1421] of the Master Degree in Data Analytics for Business and Society in the Ca'Foscari University of Venice. 
